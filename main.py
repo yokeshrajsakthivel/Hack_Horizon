@@ -3,44 +3,47 @@ import torchvision
 import torchvision.transforms as transforms
 import matplotlib.pyplot as plt
 import numpy as np
-from model import SimpleCNN
+from model import AnimalClassifier  # Import Correct Model
+from torchvision import datasets
 
-# 🔹 CIFAR-10 Classes
-classes = ['plane', 'car', 'bird', 'cat',
-           'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
+# Load dataset to check class-to-index mapping
+dataset = datasets.ImageFolder(root="./data/images")  # Change this to your actual dataset path
+print("Class-to-index mapping:", dataset.class_to_idx)
 
-# 🔹 Set Device
+# Define Class Labels
+classes = ['butterfly', 'cat', 'chicken', 'cow', 'dog']  # Update this list
+
+# Set Device (Use GPU if available)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# 🔹 Load Model
-model = SimpleCNN().to(device)
+# Load Model
+model = AnimalClassifier(num_classes=len(classes)).to(device)  # Match number of classes
 model.load_state_dict(torch.load("model.pth", map_location=device))
 model.eval()
 
-# 🔹 Load Test Dataset (Batch size = 1 for single image processing)
-transform = transforms.Compose([
+# Define Image Transformations
+test_transform = transforms.Compose([
+    transforms.Resize((224, 224), interpolation=transforms.InterpolationMode.BICUBIC),  # Higher resolution
     transforms.ToTensor(),
-    transforms.Normalize((0.5,), (0.5,))
+    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
 ])
 
-testset = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=transform)
+
+# Load Custom Dataset
+testset = torchvision.datasets.ImageFolder(root="./data/images", transform=test_transform)
 testloader = torch.utils.data.DataLoader(testset, batch_size=1, shuffle=True)
 
-# 🔹 Function to Show Image with Prediction
-def show_image_with_prediction(img, prediction):
-    img = img / 2 + 0.5  # Unnormalize
+# Function to Show Image with Prediction
+def show_image(img, label):
+    img = img * 0.5 + 0.5  # Correct unnormalization
     npimg = img.numpy()
+    plt.imshow(np.transpose(npimg, (1, 2, 0)))  # Convert tensor to image
+    plt.title(f"Predicted: {label}")
+    plt.axis("off")
+    plt.show()
 
-    plt.imshow(np.transpose(npimg, (1, 2, 0)))
 
-    # Show Predictions on Image
-    plt.text(2, 2, f"{prediction}", fontsize=14, color="red", 
-             bbox=dict(facecolor='white', alpha=0))
-
-    plt.axis('off')  # Hide axes
-    plt.show()  # Show image
-
-# 🔹 Function to Detect Objects
+# Function to Detect Objects
 def detect_objects():
     dataiter = iter(testloader)
     images, labels = next(dataiter)  # Load one image
@@ -49,16 +52,15 @@ def detect_objects():
     outputs = model(images)
     _, predicted = torch.max(outputs, 1)
 
-    # Convert prediction to class name
+    # Get Predicted Class Name
     prediction = classes[predicted.item()]
 
     # Print Prediction in Terminal
     print(f"Predicted Object: {prediction}")
 
-    # Show image with prediction
-    show_image_with_prediction(images.cpu().squeeze(), prediction)
+    # Show Image with Prediction
+    show_image(images.cpu().squeeze(), prediction)
 
-# 🔹 Run Detection
+# Run Detection
 if __name__ == "__main__":
     detect_objects()
-
