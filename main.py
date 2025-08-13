@@ -1,51 +1,80 @@
 import torch
-import torchvision
 import torchvision.transforms as transforms
 import matplotlib.pyplot as plt
 import numpy as np
-from model import AnimalClassifier  # Import Correct Model
+import random
+from model import AnimalClassifier
 from torchvision import datasets
+from secure_layer import ModelSecurity  # import secure layer
 
-# Load dataset to check class-to-index mapping
-dataset = datasets.ImageFolder(root="./data/images")  # Change this to your actual dataset path
+# Define Image Transformations
+test_transform = transforms.Compose([
+    transforms.Resize((224, 224), interpolation=transforms.InterpolationMode.BICUBIC),
+    transforms.ToTensor(),
+    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+])
+
+# Load dataset with transform applied
+dataset = datasets.ImageFolder(root="./data/images", transform=test_transform)
 print("Class-to-index mapping:", dataset.class_to_idx)
 
 # Define Class Labels
-classes = ['butterfly', 'cat', 'chicken', 'cow', 'dog']  # Update this list
+classes = ['butterfly', 'cat', 'chicken', 'cow', 'dog']
 
 # Set Device (Use GPU if available)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Load Model
-model = AnimalClassifier(num_classes=len(classes)).to(device)  # Match number of classes
+model = AnimalClassifier(num_classes=len(classes)).to(device)
 model.load_state_dict(torch.load("model.pth", map_location=device))
 model.eval()
 
-# Define Image Transformations
-test_transform = transforms.Compose([
-    transforms.Resize((224, 224), interpolation=transforms.InterpolationMode.BICUBIC),  # Higher resolution
-    transforms.ToTensor(),
-    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-])
+# Wrap model in security layer
+security = ModelSecurity(model)
 
 # Function to Show Image with Prediction
-def show_image(img, label):
-    img = img * 0.5 + 0.5  # Correct unnormalization
+def show_image(img, label, secure_status, reason):
+    img = img * 0.5 + 0.5  # Unnormalize
     npimg = img.numpy()
-    plt.imshow(np.transpose(npimg, (1, 2, 0)))  # Convert tensor to image
-    plt.title(f"Predicted: {label}")
+    plt.imshow(np.transpose(npimg, (1, 2, 0)))
+    plt.title(f"Predicted: {label}\nSecurity: {secure_status} ({reason})")
     plt.axis("off")
-    plt.show()
 
-# Function to Detect Objects
+# Function to Detect Objects (random image, quit with q)
 def detect_objects():
-    # Define DataLoader
-    testloader = torch.utils.data.DataLoader(
-        dataset, batch_size=4, shuffle=False, num_workers=2
-    )
-    dataiter = iter(testloader)
-    images, labels = next(dataiter)
-    # Add detection logic here
+    indices = list(range(len(dataset)))
+    plt.ion()  # Enable interactive mode
+    fig = plt.figure(figsize=(6, 6))  # keep panel size stable
+
+    while True:
+        idx = random.choice(indices)
+        image, _ = dataset[idx]
+        image = image.to(device)
+
+        # Secure prediction
+        outputs, secure_status, reason = security.secure_predict(image)
+        if outputs is not None:
+            _, predicted = torch.max(outputs, 1)
+            predicted_label = classes[predicted[0]]
+        else:
+            predicted_label = "N/A"
+
+        plt.clf()
+        show_image(image.cpu(), predicted_label, secure_status, reason)
+        plt.draw()
+
+        print(f"Prediction: {predicted_label}")
+        print(f"Security: {secure_status} — {reason}")
+        print("Press 'q' in the figure window to quit, or any other key to continue...")
+
+        key = plt.waitforbuttonpress()
+
+        # If user closes the window, break
+        if not plt.fignum_exists(fig.number):
+            break
+
+    plt.ioff()
+    plt.close(fig)
 
 # Run Detection
 if __name__ == "__main__":
